@@ -1,0 +1,39 @@
+name: jadespa
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: jade_spa
+      MYSQL_USER: jade_app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Configure MYSQL_PASSWORD no .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Configure MYSQL_ROOT_PASSWORD no .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/Dump20261115.sql:/docker-entrypoint-initdb.d/01-jade-spa.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -u\"$$MYSQL_USER\" \"$$MYSQL_DATABASE\" -e 'SELECT 1 FROM clientes LIMIT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    environment:
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Configure ADMIN_EMAIL no .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Configure ADMIN_PASSWORD no .env}
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/jade_spa?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: jade_app
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?Configure MYSQL_PASSWORD no .env}
+      SPRING_JPA_SHOW_SQL: "false"
+volumes:
+  mysql_data:

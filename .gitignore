@@ -1,0 +1,5 @@
+backend/target/
+.env
+*.log
+backend/.maven-cache/
+.maven-repository/
