@@ -1,14 +1,9 @@
-
 document.addEventListener("DOMContentLoaded", async () => {
-
     const API_CLIENTES = "/api/clientes";
     const API_PLANOS = "/api/planos";
     const API_ASSINATURAS = "/api/assinaturas";
     const API_SOLICITACOES = "/api/solicitacoes-planos";
-
     const CHAVE_PERFIL = "jadeSpaPerfil";
-
-    // ===== ELEMENTOS DO PERFIL =====
 
     const form = document.getElementById("formPerfil");
     const btnEditar = document.getElementById("btnEditar");
@@ -26,10 +21,64 @@ document.addEventListener("DOMContentLoaded", async () => {
     const avatarGrande = document.querySelector(".avatar-grande");
     const avatarMini = document.querySelector(".avatar-mini");
 
+    const nomePlanoAtual = document.getElementById("nomePlanoAtual");
+    const descricaoPlanoAtual = document.getElementById("descricaoPlanoAtual");
+    const valorPlanoAtual = document.getElementById("valorPlanoAtual");
+    const statusPlanoAtual = document.getElementById("statusPlanoAtual");
+    const mensagemPlano = document.getElementById("mensagemPlano");
+    const listaPlanos = document.getElementById("listaPlanos");
+
     let dadosOriginais = {};
     let idCliente = null;
+    let solicitandoPlano = false;
 
-    // ===== SESSÃO =====
+    function escrever(elemento, texto) {
+        if (elemento) elemento.textContent = texto;
+    }
+
+    function mostrarMensagemPlano(texto) {
+        escrever(mensagemPlano, texto);
+    }
+
+    // ===== REQUISIÇÕES =====
+
+    async function requisitar(url, opcoes = {}) {
+        const resposta = await fetch(url, {
+            ...opcoes,
+            credentials: "same-origin",
+            headers: {
+                Accept: "application/json",
+                ...opcoes.headers
+            }
+        });
+
+        const texto = await resposta.text();
+        let dados = null;
+
+        if (texto) {
+            try {
+                dados = JSON.parse(texto);
+            } catch {
+                dados = null;
+            }
+        }
+
+        if (!resposta.ok) {
+            const erro = new Error(
+                dados?.detail ||
+                dados?.message ||
+                dados?.mensagem ||
+                `Não foi possível concluir a operação. Código: ${resposta.status}`
+            );
+
+            erro.status = resposta.status;
+            throw erro;
+        }
+
+        return dados;
+    }
+
+    // ===== SESSÃO E AVATARES =====
 
     function obterSessao() {
         try {
@@ -40,13 +89,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
-    // ===== AVATARES =====
-
     function obterIniciais(nome) {
-        const partes = (nome || "").trim().split(/\s+/).filter(Boolean);
+        const partes = (nome || "")
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
 
-        if (partes.length === 0) return "?";
-
+        if (!partes.length) return "?";
         if (partes.length === 1) {
             return partes[0].charAt(0).toUpperCase();
         }
@@ -59,63 +108,68 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     function atualizarAvatares(nome) {
         const iniciais = obterIniciais(nome);
-
-        if (avatarGrande) avatarGrande.textContent = iniciais;
-        if (avatarMini) avatarMini.textContent = iniciais;
+        escrever(avatarGrande, iniciais);
+        escrever(avatarMini, iniciais);
     }
 
     // ===== DADOS PESSOAIS =====
 
     function preencherFormulario(dados) {
-        campos.nome.value = dados.nome || "";
-        campos.email.value = dados.email || "";
-        campos.telefone.value = dados.telefone || "";
-        campos.nascimento.value = dados.dataNascimento || "";
+        if (campos.nome) campos.nome.value = dados.nome || "";
+        if (campos.email) campos.email.value = dados.email || "";
+        if (campos.telefone) campos.telefone.value = dados.telefone || "";
 
-        atualizarAvatares(dados.nome || "");
+        if (campos.nascimento) {
+            campos.nascimento.value = dados.dataNascimento || "";
+        }
+
+        atualizarAvatares(dados.nome);
     }
 
     function definirEdicao(permitirEditar) {
         Object.values(campos).forEach(campo => {
-            campo.disabled = !permitirEditar;
+            if (campo) campo.disabled = !permitirEditar;
         });
 
-        btnEditar.hidden = permitirEditar;
-        acoes.hidden = !permitirEditar;
+        if (btnEditar) btnEditar.hidden = permitirEditar;
+        if (acoes) acoes.hidden = !permitirEditar;
 
-        mensagem.textContent = "";
+        escrever(mensagem, "");
     }
 
     function capturarDados() {
         return {
-            nome: campos.nome.value.trim(),
-            email: campos.email.value.trim(),
-            telefone: campos.telefone.value.trim(),
-            dataNascimento: campos.nascimento.value || null
+            nome: campos.nome?.value.trim() || "",
+            email: campos.email?.value.trim() || "",
+            telefone: campos.telefone?.value.trim() || "",
+            dataNascimento: campos.nascimento?.value || null
         };
     }
 
     async function carregarPerfil() {
         const sessao = obterSessao();
 
-        if (!sessao || !sessao.id) {
-            mensagem.textContent =
-                "Não foi possível identificar sua conta. Faça login novamente.";
+        if (!sessao?.id) {
+            escrever(
+                mensagem,
+                "Não foi possível identificar sua conta. Faça login novamente."
+            );
 
-            form.hidden = true;
+            if (form) form.hidden = true;
             return false;
         }
 
         idCliente = sessao.id;
 
         try {
-            const resposta = await fetch(`${API_CLIENTES}/${idCliente}`);
+            const dados = await requisitar(
+                `${API_CLIENTES}/${idCliente}`,
+                { cache: "no-store" }
+            );
 
-            if (!resposta.ok) {
-                throw new Error("Não foi possível carregar o perfil.");
+            if (!dados) {
+                throw new Error("O servidor não retornou os dados do perfil.");
             }
-
-            const dados = await resposta.json();
 
             preencherFormulario(dados);
 
@@ -126,36 +180,32 @@ document.addEventListener("DOMContentLoaded", async () => {
                 dataNascimento: dados.dataNascimento || null
             };
 
-            localStorage.setItem(CHAVE_PERFIL, JSON.stringify({
-                ...sessao,
-                ...dados
-            }));
+            localStorage.setItem(
+                CHAVE_PERFIL,
+                JSON.stringify({ ...sessao, ...dados })
+            );
 
             return true;
-
         } catch (erro) {
             console.error("Erro ao carregar perfil:", erro);
-
-            mensagem.textContent =
-                "Não foi possível carregar seus dados. Verifique o servidor.";
-
+            escrever(mensagem, erro.message);
             return false;
         }
     }
 
-    btnEditar.addEventListener("click", () => {
+    btnEditar?.addEventListener("click", () => {
         dadosOriginais = capturarDados();
         definirEdicao(true);
-        campos.nome.focus();
+        campos.nome?.focus();
     });
 
-    btnCancelar.addEventListener("click", () => {
+    btnCancelar?.addEventListener("click", () => {
         preencherFormulario(dadosOriginais);
         definirEdicao(false);
-        mensagem.textContent = "Alterações canceladas.";
+        escrever(mensagem, "Alterações canceladas.");
     });
 
-    form.addEventListener("submit", async evento => {
+    form?.addEventListener("submit", async evento => {
         evento.preventDefault();
 
         if (!form.checkValidity()) {
@@ -166,56 +216,36 @@ document.addEventListener("DOMContentLoaded", async () => {
         const novosDados = capturarDados();
 
         if (!novosDados.nome || !novosDados.email) {
-            mensagem.textContent = "Preencha seu nome e e-mail.";
+            escrever(mensagem, "Preencha seu nome e e-mail.");
             return;
         }
 
         try {
-            const resposta = await fetch(`${API_CLIENTES}/${idCliente}`, {
+            await requisitar(`${API_CLIENTES}/${idCliente}`, {
                 method: "PUT",
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(novosDados)
             });
 
-            const resultado = await resposta.json();
+            const sessao = obterSessao() || {};
 
-            if (!resposta.ok) {
-                mensagem.textContent =
-                    resultado.mensagem ||
-                    "Não foi possível atualizar seus dados.";
-
-                return;
-            }
-
-            const sessao = obterSessao();
-
-            localStorage.setItem(CHAVE_PERFIL, JSON.stringify({
-                ...sessao,
-                ...novosDados
-            }));
+            localStorage.setItem(
+                CHAVE_PERFIL,
+                JSON.stringify({ ...sessao, ...novosDados })
+            );
 
             preencherFormulario(novosDados);
             dadosOriginais = { ...novosDados };
-
             definirEdicao(false);
-            mensagem.textContent = "Perfil atualizado com sucesso!";
 
+            escrever(mensagem, "Perfil atualizado com sucesso!");
         } catch (erro) {
             console.error("Erro ao atualizar perfil:", erro);
-            mensagem.textContent = "Erro ao conectar com o servidor.";
+            escrever(mensagem, erro.message);
         }
     });
 
-    // ===== MEU PLANO =====
-
-    const nomePlanoAtual = document.getElementById("nomePlanoAtual");
-    const descricaoPlanoAtual = document.getElementById("descricaoPlanoAtual");
-    const valorPlanoAtual = document.getElementById("valorPlanoAtual");
-    const statusPlanoAtual = document.getElementById("statusPlanoAtual");
-    const mensagemPlano = document.getElementById("mensagemPlano");
-    const listaPlanos = document.getElementById("listaPlanos");
+    // ===== PLANO ATUAL =====
 
     function formatarMoeda(valor) {
         return Number(valor).toLocaleString("pt-BR", {
@@ -224,56 +254,102 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     }
 
-    // ===== PLANO ATUAL =====
-
     async function carregarPlanoAtual() {
         try {
-            const resposta = await fetch(
-                `${API_ASSINATURAS}/cliente/${idCliente}/ativa`
+            const dados = await requisitar(
+                `${API_ASSINATURAS}/cliente/${idCliente}/ativa`,
+                { cache: "no-store" }
             );
 
-            if (!resposta.ok) {
-                throw new Error("Erro ao consultar assinatura.");
+            if (!dados) {
+                throw new Error("O servidor não retornou a assinatura.");
             }
 
-            const dados = await resposta.json();
-
             if (!dados.temPlano) {
-                nomePlanoAtual.textContent = "Nenhum plano ativo";
-
-                descricaoPlanoAtual.textContent =
-                    "Você ainda não possui uma assinatura.";
-
-                valorPlanoAtual.textContent = "--";
-                statusPlanoAtual.textContent = "Sem plano";
-
+                escrever(nomePlanoAtual, "Nenhum plano ativo");
+                escrever(
+                    descricaoPlanoAtual,
+                    "Você ainda não possui uma assinatura."
+                );
+                escrever(valorPlanoAtual, "--");
+                escrever(statusPlanoAtual, "Sem plano");
                 return;
             }
 
-            nomePlanoAtual.textContent = dados.plano.nome;
-            descricaoPlanoAtual.textContent = dados.plano.descricao || "";
-
-            valorPlanoAtual.textContent =
-                formatarMoeda(dados.plano.valor);
-
-            statusPlanoAtual.textContent = dados.status;
-
+            escrever(nomePlanoAtual, dados.plano.nome);
+            escrever(descricaoPlanoAtual, dados.plano.descricao || "");
+            escrever(valorPlanoAtual, formatarMoeda(dados.plano.valor));
+            escrever(statusPlanoAtual, dados.status);
         } catch (erro) {
             console.error("Erro ao carregar plano atual:", erro);
-
-            nomePlanoAtual.textContent = "Não foi possível carregar";
-            descricaoPlanoAtual.textContent = "Tente atualizar a página.";
-            valorPlanoAtual.textContent = "--";
-            statusPlanoAtual.textContent = "Indisponível";
+            escrever(nomePlanoAtual, "Não foi possível carregar");
+            escrever(descricaoPlanoAtual, "Tente atualizar a página.");
+            escrever(valorPlanoAtual, "--");
+            escrever(statusPlanoAtual, "Indisponível");
         }
     }
 
-    // ===== JANELA DE PAGAMENTO DEMONSTRATIVO =====
+    // ===== SOLICITAÇÃO PERSISTIDA NO BANCO =====
+
+    async function recuperarSolicitacaoPendente() {
+        const solicitacoes = await requisitar(
+            `${API_SOLICITACOES}/cliente/${idCliente}`,
+            { cache: "no-store" }
+        );
+
+        if (!Array.isArray(solicitacoes)) {
+            throw new Error("O servidor retornou uma lista de solicitações inválida.");
+        }
+
+        // Prioriza pedidos já enviados para análise.
+        const pendente =
+            solicitacoes.find(s => s.status === "AGUARDANDO_ANALISE") ||
+            solicitacoes.find(s => s.status === "AGUARDANDO_COMPROVANTE");
+
+        document.getElementById("btnRetomarPlano")?.remove();
+
+        if (!pendente) {
+            mostrarMensagemPlano("");
+            return null;
+        }
+
+        if (!pendente.plano || !pendente.id) {
+            throw new Error("A solicitação salva está com dados incompletos.");
+        }
+
+        if (pendente.status === "AGUARDANDO_ANALISE") {
+            mostrarMensagemPlano(
+                `Plano escolhido: ${pendente.plano.nome}. ` +
+                "Aguardando aprovação do administrador."
+            );
+        } else {
+            mostrarMensagemPlano(
+                `Plano escolhido: ${pendente.plano.nome}. ` +
+                "Pagamento demonstrativo pendente."
+            );
+
+            const retomar = document.createElement("button");
+            retomar.id = "btnRetomarPlano";
+            retomar.type = "button";
+            retomar.className = "btn-principal";
+            retomar.textContent = "Continuar pagamento";
+
+            retomar.addEventListener("click", () => {
+                criarJanelaPix(pendente.plano, pendente.id);
+            });
+
+            mensagemPlano?.insertAdjacentElement("afterend", retomar);
+        }
+
+        return pendente;
+    }
+
+    // ===== PAGAMENTO DEMONSTRATIVO =====
 
     function criarJanelaPix(plano, solicitacaoId) {
+        document.getElementById("modalPixJade")?.remove();
 
         const overlay = document.createElement("div");
-
         overlay.id = "modalPixJade";
 
         Object.assign(overlay.style, {
@@ -289,11 +365,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
 
         const modal = document.createElement("div");
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+        modal.setAttribute("aria-labelledby", "tituloPixJade");
 
         Object.assign(modal.style, {
             background: "#ffffff",
             width: "100%",
             maxWidth: "430px",
+            maxHeight: "90vh",
+            overflowY: "auto",
+            boxSizing: "border-box",
             padding: "28px",
             borderRadius: "16px",
             textAlign: "center",
@@ -303,6 +385,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
 
         const titulo = document.createElement("h2");
+        titulo.id = "tituloPixJade";
         titulo.textContent = "Pagamento Pix";
 
         const aviso = document.createElement("p");
@@ -322,9 +405,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         nome.textContent = plano.nome;
 
         const valor = document.createElement("h2");
-        valor.textContent = formatarMoeda(plano.valor) + " / mês";
+        valor.textContent = `${formatarMoeda(plano.valor)} / mês`;
 
         const qr = document.createElement("div");
+        qr.textContent = "PIX DE TESTE";
 
         Object.assign(qr.style, {
             width: "160px",
@@ -341,18 +425,18 @@ document.addEventListener("DOMContentLoaded", async () => {
             fontSize: "14px"
         });
 
-        qr.textContent = "PIX DE TESTE";
-
         const explicacao = document.createElement("p");
         explicacao.textContent =
-            "Este código é apenas ilustrativo e não pode ser escaneado para realizar uma transferência.";
+            "Este código é apenas ilustrativo e não pode ser " +
+            "escaneado para realizar uma transferência.";
 
-        explicacao.style.fontSize = "13px";
-        explicacao.style.color = "#666";
+        Object.assign(explicacao.style, {
+            fontSize: "13px",
+            color: "#666"
+        });
 
         const identificacao = document.createElement("p");
-        identificacao.textContent =
-            "Solicitação nº " + solicitacaoId;
+        identificacao.textContent = `Solicitação nº ${solicitacaoId}`;
 
         const botaoPagar = document.createElement("button");
         botaoPagar.type = "button";
@@ -388,56 +472,48 @@ document.addEventListener("DOMContentLoaded", async () => {
         const resultado = document.createElement("p");
         resultado.setAttribute("role", "status");
 
-        botaoFechar.addEventListener("click", () => {
-            overlay.remove();
-        });
+        botaoFechar.addEventListener("click", () => overlay.remove());
 
         botaoPagar.addEventListener("click", async () => {
+            if (botaoPagar.disabled) return;
 
             botaoPagar.disabled = true;
             botaoPagar.textContent = "Processando simulação...";
 
             try {
-                const resposta = await fetch(
+                await requisitar(
                     `${API_SOLICITACOES}/${solicitacaoId}/pix-simulado`,
-                    {
-                        method: "POST"
-                    }
+                    { method: "POST" }
                 );
-
-                const dados = await resposta.json();
-
-                if (!resposta.ok) {
-                    throw new Error(
-                        dados.message ||
-                        dados.mensagem ||
-                        "Não foi possível simular o pagamento."
-                    );
-                }
-
-                resultado.textContent =
-                    "Pagamento demonstrativo registrado! Sua solicitação está aguardando aprovação do administrador.";
-
-                resultado.style.color = "#294936";
-                resultado.style.fontWeight = "bold";
-
-                botaoPagar.textContent = "Pagamento simulado";
-                botaoPagar.disabled = true;
-
-                mensagemPlano.textContent =
-                    "Sua solicitação foi enviada para análise administrativa.";
-
-                statusPlanoAtual.textContent = "Aguardando aprovação";
-                await recuperarSolicitacaoPendente();
-
             } catch (erro) {
-                console.error(erro);
-
+                console.error("Erro no pagamento demonstrativo:", erro);
                 resultado.textContent = erro.message;
                 resultado.style.color = "#b42318";
-
                 botaoPagar.disabled = false;
                 botaoPagar.textContent = "Tentar novamente";
+                return;
+            }
+
+            resultado.textContent =
+                "Pagamento demonstrativo registrado! " +
+                "Aguarde a aprovação do administrador.";
+
+            resultado.style.color = "#294936";
+            resultado.style.fontWeight = "bold";
+            botaoPagar.textContent = "Pagamento simulado";
+
+            document.getElementById("btnRetomarPlano")?.remove();
+
+            mostrarMensagemPlano(
+                `Plano escolhido: ${plano.nome}. ` +
+                "Aguardando aprovação do administrador."
+            );
+
+            // Uma falha na atualização da tela não permite repetir o pagamento.
+            try {
+                await recuperarSolicitacaoPendente();
+            } catch (erro) {
+                console.error("Erro ao atualizar solicitação:", erro);
             }
         });
 
@@ -456,156 +532,132 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
+        botaoPagar.focus();
     }
-
-async function recuperarSolicitacaoPendente() {
-    const resposta = await fetch(
-        `${API_SOLICITACOES}/cliente/${idCliente}`,
-        { cache: "no-store" }
-    );
-
-    if (!resposta.ok) {
-        throw new Error("Não foi possível consultar sua solicitação.");
-    }
-
-    const solicitacoes = await resposta.json();
-
-    const pendente = solicitacoes.find(s =>
-        s.status === "AGUARDANDO_ANALISE" ||
-        s.status === "AGUARDANDO_COMPROVANTE"
-    );
-
-    document.getElementById("btnRetomarPlano")?.remove();
-
-    if (!pendente) return null;
-
-    const nome = pendente.plano.nome;
-
-    if (pendente.status === "AGUARDANDO_ANALISE") {
-        mensagemPlano.textContent =
-            `Plano escolhido: ${nome}. Aguardando aprovação do administrador.`;
-    } else {
-        mensagemPlano.textContent =
-            `Plano escolhido: ${nome}. Pagamento demonstrativo pendente.`;
-
-        const retomar = document.createElement("button");
-        retomar.id = "btnRetomarPlano";
-        retomar.type = "button";
-        retomar.className = "btn-principal";
-        retomar.textContent = "Continuar pagamento";
-
-        retomar.addEventListener("click", () => {
-            criarJanelaPix(pendente.plano, pendente.id);
-        });
-
-        mensagemPlano.insertAdjacentElement("afterend", retomar);
-    }
-
-    return pendente;
-}
 
     // ===== ESCOLHER PLANO =====
 
-   
-async function escolherPlano(plano) {
-    let solicitandoPlano = false;
+    async function escolherPlano(plano) {
+        if (solicitandoPlano) return;
 
-async function escolherPlano(plano) {
-    if (solicitandoPlano) return;
-
-    solicitandoPlano = true;
-
-    try {
-        const pendente = await recuperarSolicitacaoPendente();
-
-        if (pendente?.status === "AGUARDANDO_ANALISE") {
+        if (!idCliente) {
+            alert("Faça login novamente para escolher um plano.");
             return;
         }
 
-        if (
-            pendente &&
-            Number(pendente.plano.id) === Number(plano.id)
-        ) {
-            criarJanelaPix(pendente.plano, pendente.id);
-            return;
-        }
+        solicitandoPlano = true;
 
-        const confirmou = window.confirm(
-            `Deseja solicitar o plano ${plano.nome} por ` +
-            `${formatarMoeda(plano.valor)} por mês?`
-        );
+        const botoes = listaPlanos
+            ? [...listaPlanos.querySelectorAll("button")]
+            : [];
 
-        if (!confirmou) return;
+        botoes.forEach(botao => {
+            botao.disabled = true;
+        });
 
-        mensagemPlano.textContent = "Salvando sua escolha...";
+        try {
+            mostrarMensagemPlano("Consultando sua solicitação...");
 
-        const resposta = await fetch(
-            `${API_SOLICITACOES}/cliente/${idCliente}/plano/${plano.id}`,
-            {
-                method: "POST",
-                headers: { Accept: "application/json" }
-            }
-        );
+            const pendente = await recuperarSolicitacaoPendente();
 
-        const dados = await resposta.json().catch(() => ({}));
-
-        if (!resposta.ok) {
-            if (resposta.status === 409) {
-                const existente = await recuperarSolicitacaoPendente();
-                if (existente) return;
+            if (pendente?.status === "AGUARDANDO_ANALISE") {
+                alert(
+                    `Seu pedido do plano ${pendente.plano.nome} ` +
+                    "já está aguardando aprovação do administrador."
+                );
+                return;
             }
 
-            throw new Error(
-                dados.detail ||
-                dados.message ||
-                dados.mensagem ||
-                `Não foi possível solicitar o plano. Código: ${resposta.status}`
+            if (
+                pendente &&
+                Number(pendente.plano.id) === Number(plano.id)
+            ) {
+                criarJanelaPix(pendente.plano, pendente.id);
+                return;
+            }
+
+            const confirmou = window.confirm(
+                `Deseja solicitar o plano ${plano.nome} por ` +
+                `${formatarMoeda(plano.valor)} por mês?`
             );
+
+            if (!confirmou) return;
+
+            mostrarMensagemPlano("Salvando sua escolha...");
+
+            let dados;
+
+            try {
+                dados = await requisitar(
+                    `${API_SOLICITACOES}/cliente/${idCliente}/plano/${plano.id}`,
+                    { method: "POST" }
+                );
+            } catch (erro) {
+                if (erro.status === 409) {
+                    const existente = await recuperarSolicitacaoPendente();
+
+                    if (existente) {
+                        alert(mensagemPlano?.textContent || erro.message);
+                        return;
+                    }
+                }
+
+                throw erro;
+            }
+
+            if (!dados?.id) {
+                throw new Error("O servidor não retornou a solicitação.");
+            }
+
+            // A escolha já está salva, mesmo se a atualização visual falhar.
+            try {
+                await recuperarSolicitacaoPendente();
+            } catch (erro) {
+                console.error("Erro ao atualizar solicitação:", erro);
+                mostrarMensagemPlano(
+                    `Plano escolhido: ${plano.nome}. Pagamento pendente.`
+                );
+            }
+
+            criarJanelaPix(dados.plano || plano, dados.id);
+        } catch (erro) {
+            console.error("Erro ao escolher plano:", erro);
+            mostrarMensagemPlano(erro.message);
+            alert(erro.message);
+        } finally {
+            solicitandoPlano = false;
+
+            botoes.forEach(botao => {
+                botao.disabled = false;
+            });
         }
-
-        if (!dados.id) {
-            throw new Error("O servidor não retornou a solicitação.");
-        }
-
-        await recuperarSolicitacaoPendente();
-        criarJanelaPix(dados.plano || plano, dados.id);
-
-    } catch (erro) {
-        console.error("Erro ao escolher plano:", erro);
-        mensagemPlano.textContent = erro.message;
-    } finally {
-        solicitandoPlano = false;
     }
-}
-}
 
-
-    // ===== LISTAR PLANOS DO MYSQL =====
+    // ===== LISTAR PLANOS =====
 
     async function carregarPlanos() {
+        if (!listaPlanos) return;
 
         listaPlanos.textContent = "Carregando planos...";
 
         try {
-            const resposta = await fetch(API_PLANOS);
+            const planos = await requisitar(API_PLANOS, {
+                cache: "no-store"
+            });
 
-            if (!resposta.ok) {
-                throw new Error("Erro ao buscar planos.");
+            if (!Array.isArray(planos)) {
+                throw new Error("O servidor retornou uma lista de planos inválida.");
             }
-
-            const planos = await resposta.json();
 
             listaPlanos.replaceChildren();
 
             if (!planos.length) {
                 listaPlanos.textContent =
                     "Não existem planos disponíveis no momento.";
-
                 return;
             }
 
             planos.forEach(plano => {
-
                 const card = document.createElement("div");
                 card.className = "item-conta plano-card";
 
@@ -616,10 +668,10 @@ async function escolherPlano(plano) {
 
                 const descricao = document.createElement("p");
                 descricao.textContent = plano.descricao || "";
+                descricao.style.whiteSpace = "pre-line";
 
                 const valor = document.createElement("p");
-                valor.textContent =
-                    `${formatarMoeda(plano.valor)} / mês`;
+                valor.textContent = `${formatarMoeda(plano.valor)} / mês`;
 
                 const botao = document.createElement("button");
                 botao.type = "button";
@@ -632,35 +684,15 @@ async function escolherPlano(plano) {
 
                 informacoes.append(titulo, descricao, valor);
                 card.append(informacoes, botao);
-
                 listaPlanos.appendChild(card);
             });
-
         } catch (erro) {
             console.error("Erro ao carregar planos:", erro);
-
-            listaPlanos.textContent =
-                "Não foi possível carregar os planos. Verifique se o servidor está iniciado.";
+            listaPlanos.textContent = erro.message;
         }
     }
 
-    // ===== INICIALIZAÇÃO =====
-
-    const perfilCarregado = await carregarPerfil();
-        if (perfilCarregado) {
-            await Promise.all([
-            carregarPlanoAtual(),
-            carregarPlanos()
-        ]);
-
-        try {
-            await recuperarSolicitacaoPendente();
-        } catch (erro) {
-            mensagemPlano.textContent = erro.message;
-        }
-    }
-
-    // ===== CONTRATO (MANTIDO PARA COMPATIBILIDADE) =====
+    // ===== CONTRATO =====
 
     const btnContrato = document.getElementById("btnContrato");
     const detalhesContrato = document.getElementById("detalhesContrato");
@@ -670,7 +702,6 @@ async function escolherPlano(plano) {
             const estaAberto = !detalhesContrato.hidden;
 
             detalhesContrato.hidden = estaAberto;
-
             btnContrato.textContent = estaAberto
                 ? "Ver contrato"
                 : "Ocultar contrato";
@@ -681,21 +712,31 @@ async function escolherPlano(plano) {
 
     const btnSair = document.getElementById("btnSair");
 
-    if (btnSair) {
-        btnSair.addEventListener("click", () => {
+    btnSair?.addEventListener("click", () => {
+        if (!window.confirm("Deseja realmente encerrar sua sessão?")) {
+            return;
+        }
 
-            const confirmou = confirm(
-                "Deseja realmente encerrar sua sessão?"
-            );
+        sessionStorage.clear();
+        localStorage.removeItem(CHAVE_PERFIL);
+        window.location.href = "../login.cadastro.html";
+    });
 
-            if (!confirmou) return;
+    // ===== INICIALIZAÇÃO =====
 
-            sessionStorage.clear();
-            localStorage.removeItem(CHAVE_PERFIL);
+    const perfilCarregado = await carregarPerfil();
 
-            window.location.href =
-                "../login.cadastro.html";
-        });
+    if (perfilCarregado) {
+        await Promise.all([
+            carregarPlanoAtual(),
+            carregarPlanos()
+        ]);
+
+        try {
+            await recuperarSolicitacaoPendente();
+        } catch (erro) {
+            console.error("Erro ao recuperar solicitação:", erro);
+            mostrarMensagemPlano(erro.message);
+        }
     }
-
 });
