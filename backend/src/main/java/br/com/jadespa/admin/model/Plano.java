@@ -1,7 +1,13 @@
 package br.com.jadespa.admin.model;
 
-import jakarta.persistence.*;
 import java.math.BigDecimal;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "planos")
@@ -14,6 +20,7 @@ public class Plano {
     @Column(nullable = false, unique = true)
     private String nome;
 
+    @Column(length = 2000)
     private String descricao;
 
     @Column(nullable = false, precision = 10, scale = 2)
