@@ -428,6 +428,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     "Sua solicitação foi enviada para análise administrativa.";
 
                 statusPlanoAtual.textContent = "Aguardando aprovação";
+                await recuperarSolicitacaoPendente();
 
             } catch (erro) {
                 console.error(erro);
@@ -457,64 +458,125 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.body.appendChild(overlay);
     }
 
+async function recuperarSolicitacaoPendente() {
+    const resposta = await fetch(
+        `${API_SOLICITACOES}/cliente/${idCliente}`,
+        { cache: "no-store" }
+    );
+
+    if (!resposta.ok) {
+        throw new Error("Não foi possível consultar sua solicitação.");
+    }
+
+    const solicitacoes = await resposta.json();
+
+    const pendente = solicitacoes.find(s =>
+        s.status === "AGUARDANDO_ANALISE" ||
+        s.status === "AGUARDANDO_COMPROVANTE"
+    );
+
+    document.getElementById("btnRetomarPlano")?.remove();
+
+    if (!pendente) return null;
+
+    const nome = pendente.plano.nome;
+
+    if (pendente.status === "AGUARDANDO_ANALISE") {
+        mensagemPlano.textContent =
+            `Plano escolhido: ${nome}. Aguardando aprovação do administrador.`;
+    } else {
+        mensagemPlano.textContent =
+            `Plano escolhido: ${nome}. Pagamento demonstrativo pendente.`;
+
+        const retomar = document.createElement("button");
+        retomar.id = "btnRetomarPlano";
+        retomar.type = "button";
+        retomar.className = "btn-principal";
+        retomar.textContent = "Continuar pagamento";
+
+        retomar.addEventListener("click", () => {
+            criarJanelaPix(pendente.plano, pendente.id);
+        });
+
+        mensagemPlano.insertAdjacentElement("afterend", retomar);
+    }
+
+    return pendente;
+}
+
     // ===== ESCOLHER PLANO =====
 
    
 async function escolherPlano(plano) {
+    let solicitandoPlano = false;
 
-    const confirmar = window.confirm(
-        `Deseja solicitar o plano ${plano.nome} por ${formatarMoeda(plano.valor)} por mês?`
-    );
+async function escolherPlano(plano) {
+    if (solicitandoPlano) return;
 
-    if (!confirmar) return;
+    solicitandoPlano = true;
 
     try {
-        mensagemPlano.textContent = "Criando sua solicitação...";
+        const pendente = await recuperarSolicitacaoPendente();
+
+        if (pendente?.status === "AGUARDANDO_ANALISE") {
+            return;
+        }
+
+        if (
+            pendente &&
+            Number(pendente.plano.id) === Number(plano.id)
+        ) {
+            criarJanelaPix(pendente.plano, pendente.id);
+            return;
+        }
+
+        const confirmou = window.confirm(
+            `Deseja solicitar o plano ${plano.nome} por ` +
+            `${formatarMoeda(plano.valor)} por mês?`
+        );
+
+        if (!confirmou) return;
+
+        mensagemPlano.textContent = "Salvando sua escolha...";
 
         const resposta = await fetch(
             `${API_SOLICITACOES}/cliente/${idCliente}/plano/${plano.id}`,
             {
                 method: "POST",
-                headers: {
-                    "Accept": "application/json"
-                }
+                headers: { Accept: "application/json" }
             }
         );
 
-        let dados = {};
-
-        try {
-            dados = await resposta.json();
-        } catch (erro) {
-            dados = {};
-        }
+        const dados = await resposta.json().catch(() => ({}));
 
         if (!resposta.ok) {
+            if (resposta.status === 409) {
+                const existente = await recuperarSolicitacaoPendente();
+                if (existente) return;
+            }
+
             throw new Error(
                 dados.detail ||
                 dados.message ||
                 dados.mensagem ||
-                dados.title ||
-                `Erro ao criar solicitação. Código: ${resposta.status}`
+                `Não foi possível solicitar o plano. Código: ${resposta.status}`
             );
         }
 
         if (!dados.id) {
-            throw new Error(
-                "A solicitação foi recebida, mas o servidor não retornou o identificador."
-            );
+            throw new Error("O servidor não retornou a solicitação.");
         }
 
-        mensagemPlano.textContent =
-            "Solicitação criada. Prossiga para o pagamento demonstrativo.";
-
-        criarJanelaPix(plano, dados.id);
+        await recuperarSolicitacaoPendente();
+        criarJanelaPix(dados.plano || plano, dados.id);
 
     } catch (erro) {
-        console.error("Erro ao solicitar plano:", erro);
-
+        console.error("Erro ao escolher plano:", erro);
         mensagemPlano.textContent = erro.message;
+    } finally {
+        solicitandoPlano = false;
     }
+}
 }
 
 
@@ -585,12 +647,17 @@ async function escolherPlano(plano) {
     // ===== INICIALIZAÇÃO =====
 
     const perfilCarregado = await carregarPerfil();
-
-    if (perfilCarregado) {
-        await Promise.all([
+        if (perfilCarregado) {
+            await Promise.all([
             carregarPlanoAtual(),
             carregarPlanos()
         ]);
+
+        try {
+            await recuperarSolicitacaoPendente();
+        } catch (erro) {
+            mensagemPlano.textContent = erro.message;
+        }
     }
 
     // ===== CONTRATO (MANTIDO PARA COMPATIBILIDADE) =====
