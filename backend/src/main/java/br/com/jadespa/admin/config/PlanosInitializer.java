@@ -1,11 +1,12 @@
 package br.com.jadespa.admin.config;
-import br.com.jadespa.admin.model.Plano;
-import br.com.jadespa.admin.repository.PlanoRepository;
+import java.math.BigDecimal;
+
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import br.com.jadespa.admin.model.Plano;
+import br.com.jadespa.admin.repository.PlanoRepository;
 
 @Component
 public class PlanosInitializer implements CommandLineRunner {
@@ -25,11 +26,6 @@ public class PlanosInitializer implements CommandLineRunner {
                 """
                 Para quem quer começar a cuidar de si.
 
-                ✓ 1 Massagem Relaxante por mês
-                ✓ 1 Sessão de Meditação por mês
-                ✓ Acesso às Aulas Complementares
-
-                Comece sua jornada de bem-estar.
                 """.strip()
         );
 
@@ -38,12 +34,6 @@ public class PlanosInitializer implements CommandLineRunner {
                 "549.90",
                 """
                 Para quem busca uma rotina mais completa de bem-estar.
-
-                ✓ 2 Massagens Relaxantes por mês
-                ✓ 1 Tratamento Facial por mês
-                ✓ 2 Sessões de Meditação por mês
-                ✓ Acesso às Aulas Complementares
-                ✓ Avaliação de bem-estar
 
                 Encontre seu equilíbrio todos os dias.
                 """.strip()
@@ -54,13 +44,6 @@ public class PlanosInitializer implements CommandLineRunner {
                 "769.90",
                 """
                 Para uma experiência completa de cuidado e relaxamento.
-
-                ✓ 4 Massagens Relaxantes por mês
-                ✓ 2 Tratamentos Faciais por mês
-                ✓ 1 Banho de Ofurô por mês
-                ✓ 2 Sessões de Meditação por mês
-                ✓ Acesso às Aulas Complementares
-                ✓ Avaliação personalizada de bem-estar
 
                 Uma experiência completa para você.
                 """.strip()
